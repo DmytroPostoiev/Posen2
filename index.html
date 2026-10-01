@@ -1,0 +1,1201 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, user-scalable=no, maximum-scale=1.0">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="theme-color" content="#000000">
+<title>Posen-Guide</title>
+<style>
+  :root {
+    --safe-top: env(safe-area-inset-top, 0px);
+    --safe-bottom: env(safe-area-inset-bottom, 0px);
+    --safe-left: env(safe-area-inset-left, 0px);
+    --safe-right: env(safe-area-inset-right, 0px);
+    --blur: saturate(180%) blur(20px);
+    --ios-bg: rgba(28,28,30,.72);
+    --ios-border: rgba(255,255,255,.15);
+    --ios-blue: #0a84ff;
+    --ios-green: #30d158;
+    --ios-yellow: #ffd60a;
+    --ios-red: #ff453a;
+  }
+  * {
+    box-sizing: border-box;
+    margin: 0; padding: 0;
+    -webkit-tap-highlight-color: transparent;
+    -webkit-touch-callout: none;
+    -webkit-user-select: none;
+    user-select: none;
+  }
+  html, body {
+    height: 100%;
+    width: 100%;
+    overflow: hidden;
+    background: #000;
+    color: #fff;
+    font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", sans-serif;
+    font-size: 16px;
+    overscroll-behavior: none;
+    position: fixed;
+  }
+
+  /* ===== Kamera Vollbild ===== */
+  #stage {
+    position: fixed;
+    inset: 0;
+    background: #000;
+    overflow: hidden;
+  }
+  #video, #overlayImg, #poseCanvas {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    -webkit-object-fit: cover;
+  }
+  #overlayImg, #poseCanvas { pointer-events: none; }
+
+  /* ===== Top-Bar (iOS-Stil) ===== */
+  #topBar {
+    position: fixed;
+    top: 0; left: 0; right: 0;
+    padding: calc(var(--safe-top) + 8px) calc(var(--safe-right) + 12px) 8px calc(var(--safe-left) + 12px);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 8px;
+    background: linear-gradient(to bottom, rgba(0,0,0,.6), rgba(0,0,0,0));
+    z-index: 10;
+    pointer-events: none;
+  }
+  #topBar > * { pointer-events: auto; }
+
+  .pill {
+    background: var(--ios-bg);
+    -webkit-backdrop-filter: var(--blur);
+    backdrop-filter: var(--blur);
+    padding: 7px 14px;
+    border-radius: 100px;
+    font-size: .8rem;
+    font-weight: 600;
+    letter-spacing: -0.01em;
+    border: 0.5px solid var(--ios-border);
+    transition: background .25s;
+  }
+  #overallScore.good { background: rgba(48,209,88,.85); border-color: transparent; }
+  #overallScore.mid  { background: rgba(255,214,10,.85); border-color: transparent; color: #000; }
+  #overallScore.bad  { background: rgba(255,69,58,.85); border-color: transparent; }
+
+  /* ===== Score-Chips ===== */
+  #scoreChips {
+    position: fixed;
+    top: calc(var(--safe-top) + 54px);
+    left: 0; right: 0;
+    padding: 0 calc(var(--safe-right) + 10px) 0 calc(var(--safe-left) + 10px);
+    display: flex;
+    gap: 5px;
+    flex-wrap: wrap;
+    justify-content: center;
+    z-index: 9;
+    pointer-events: none;
+  }
+  .chip {
+    background: var(--ios-bg);
+    -webkit-backdrop-filter: var(--blur);
+    backdrop-filter: var(--blur);
+    padding: 4px 9px;
+    border-radius: 100px;
+    font-size: .68rem;
+    font-weight: 600;
+    border: 0.5px solid var(--ios-border);
+    transition: background .2s;
+  }
+  .chip.good { background: rgba(48,209,88,.85); border-color: transparent; }
+  .chip.mid  { background: rgba(255,214,10,.85); border-color: transparent; color: #000; }
+  .chip.bad  { background: rgba(255,69,58,.85); border-color: transparent; }
+
+  /* ===== Bottom-Bar (iOS-Style) ===== */
+  #bottomBar {
+    position: fixed;
+    bottom: 0; left: 0; right: 0;
+    padding: 14px calc(var(--safe-right) + 24px) calc(var(--safe-bottom) + 14px) calc(var(--safe-left) + 24px);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 16px;
+    background: linear-gradient(to top, rgba(0,0,0,.6), rgba(0,0,0,0));
+    z-index: 10;
+    pointer-events: none;
+  }
+  #bottomBar > * { pointer-events: auto; }
+
+  .iconBtn {
+    width: 48px; height: 48px;
+    border-radius: 50%;
+    background: var(--ios-bg);
+    -webkit-backdrop-filter: var(--blur);
+    backdrop-filter: var(--blur);
+    border: 0.5px solid var(--ios-border);
+    color: #fff;
+    font-size: 1.25rem;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    transition: transform .12s ease, background .2s;
+    flex-shrink: 0;
+    padding: 0;
+    font-family: inherit;
+  }
+  .iconBtn:active { transform: scale(.88); background: rgba(255,255,255,.15); }
+
+  #snapBtn {
+    width: 76px; height: 76px;
+    border-radius: 50%;
+    background: #fff;
+    border: 4px solid rgba(255,255,255,.35);
+    cursor: pointer;
+    position: relative;
+    transition: transform .12s ease;
+    flex-shrink: 0;
+    padding: 0;
+    box-shadow: 0 4px 20px rgba(0,0,0,.4);
+  }
+  #snapBtn::after {
+    content: '';
+    position: absolute;
+    inset: 5px;
+    border-radius: 50%;
+    background: #fff;
+    border: 2px solid #000;
+  }
+  #snapBtn:active { transform: scale(.88); }
+
+  /* ===== Flash / Check ===== */
+  #flash {
+    position: fixed;
+    inset: 0;
+    background: rgba(48,209,88,.35);
+    opacity: 0;
+    pointer-events: none;
+    z-index: 5;
+    transition: opacity .3s;
+  }
+  #flash.show { opacity: 1; }
+
+  #checkBadge {
+    position: fixed;
+    top: 50%; left: 50%;
+    transform: translate(-50%, -50%) scale(0);
+    font-size: 7rem;
+    color: var(--ios-green);
+    text-shadow: 0 0 30px rgba(0,0,0,.9);
+    z-index: 6;
+    pointer-events: none;
+    transition: transform .4s cubic-bezier(.18,1.5,.4,1);
+    font-weight: 900;
+  }
+  #checkBadge.show { transform: translate(-50%, -50%) scale(1); }
+
+  /* ===== Toast ===== */
+  #toast {
+    position: fixed;
+    left: 50%;
+    bottom: calc(var(--safe-bottom) + 110px);
+    transform: translateX(-50%) translateY(20px);
+    background: var(--ios-bg);
+    -webkit-backdrop-filter: var(--blur);
+    backdrop-filter: var(--blur);
+    color: #fff;
+    padding: 10px 18px;
+    border-radius: 100px;
+    font-size: .85rem;
+    font-weight: 500;
+    border: 0.5px solid var(--ios-border);
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity .25s, transform .25s;
+    z-index: 60;
+    max-width: 80vw;
+    text-align: center;
+  }
+  #toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+
+  /* ===== Modal (iOS Sheet) ===== */
+  #modal {
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,.5);
+    display: none;
+    z-index: 100;
+    opacity: 0;
+    transition: opacity .25s;
+    -webkit-backdrop-filter: blur(2px);
+    backdrop-filter: blur(2px);
+  }
+  #modal.show { display: block; opacity: 1; }
+
+  #sheet {
+    position: absolute;
+    left: 0; right: 0; bottom: 0;
+    background: #1c1c1e;
+    border-radius: 16px 16px 0 0;
+    max-height: 88vh;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+    padding: 0 16px calc(var(--safe-bottom) + 20px);
+    transform: translateY(100%);
+    transition: transform .32s cubic-bezier(.2,.9,.3,1);
+    color: #fff;
+  }
+  #modal.show #sheet { transform: translateY(0); }
+
+  .sheetHandle {
+    width: 36px; height: 5px;
+    background: rgba(255,255,255,.25);
+    border-radius: 100px;
+    margin: 8px auto 16px;
+  }
+  .sheetTitle {
+    font-size: 1.15rem;
+    font-weight: 700;
+    margin-bottom: 18px;
+    padding: 0 4px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    letter-spacing: -0.02em;
+  }
+  .sheetTitle button {
+    background: none;
+    border: none;
+    color: var(--ios-blue);
+    font-size: 1rem;
+    font-weight: 600;
+    cursor: pointer;
+    padding: 4px 8px;
+    font-family: inherit;
+  }
+
+  .section {
+    background: #2c2c2e;
+    border-radius: 12px;
+    padding: 14px 16px;
+    margin-bottom: 12px;
+  }
+  .section h3 {
+    font-size: .72rem;
+    text-transform: uppercase;
+    letter-spacing: .06em;
+    color: #8e8e93;
+    font-weight: 600;
+    margin-bottom: 12px;
+  }
+  .row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 8px 0;
+    font-size: .95rem;
+    gap: 12px;
+  }
+  .row label { color: #fff; font-weight: 400; }
+  .row .value { color: #8e8e93; font-variant-numeric: tabular-nums; font-size: .9rem; }
+
+  .btn {
+    background: var(--ios-blue);
+    color: #fff;
+    border: none;
+    padding: 11px 16px;
+    border-radius: 10px;
+    font-size: .95rem;
+    font-weight: 600;
+    cursor: pointer;
+    font-family: inherit;
+    transition: opacity .15s, transform .1s;
+    width: 100%;
+    text-align: center;
+  }
+  .btn:active { opacity: .75; transform: scale(.98); }
+  .btn.secondary { background: #3a3a3c; }
+  .btn.danger { background: var(--ios-red); }
+
+  .btnGrid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+    margin-top: 4px;
+  }
+
+  input[type="range"] {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 100%;
+    height: 4px;
+    background: #48484a;
+    border-radius: 100px;
+    outline: none;
+    margin: 8px 0;
+  }
+  input[type="range"]::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 24px; height: 24px;
+    border-radius: 50%;
+    background: #fff;
+    cursor: pointer;
+    box-shadow: 0 1px 4px rgba(0,0,0,.4);
+  }
+  input[type="range"]::-moz-range-thumb {
+    width: 24px; height: 24px;
+    border-radius: 50%;
+    background: #fff;
+    border: none;
+    cursor: pointer;
+  }
+
+  /* iOS Toggle Switch */
+  .switch {
+    position: relative;
+    width: 51px; height: 31px;
+    flex-shrink: 0;
+  }
+  .switch input { display: none; }
+  .switch span {
+    position: absolute;
+    inset: 0;
+    background: #39393d;
+    border-radius: 100px;
+    transition: background .25s;
+    cursor: pointer;
+  }
+  .switch span::after {
+    content: '';
+    position: absolute;
+    width: 27px; height: 27px;
+    border-radius: 50%;
+    background: #fff;
+    top: 2px; left: 2px;
+    transition: transform .25s;
+    box-shadow: 0 2px 4px rgba(0,0,0,.3);
+  }
+  .switch input:checked + span { background: var(--ios-green); }
+  .switch input:checked + span::after { transform: translateX(20px); }
+
+  /* Galerie */
+  #refGallery {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(72px, 1fr));
+    gap: 8px;
+    margin-top: 10px;
+  }
+  .refThumb {
+    position: relative;
+    aspect-ratio: 3/4;
+    border-radius: 10px;
+    overflow: hidden;
+    border: 2px solid transparent;
+    cursor: pointer;
+    background: #000;
+    transition: transform .15s, border-color .2s;
+  }
+  .refThumb:active { transform: scale(.95); }
+  .refThumb.active { border-color: var(--ios-blue); }
+  .refThumb.done   { border-color: var(--ios-green); }
+  .refThumb img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    display: block;
+    pointer-events: none;
+  }
+  .refThumb .badge {
+    position: absolute;
+    top: 4px; right: 4px;
+    background: rgba(48,209,88,.95);
+    color: #fff;
+    font-size: .75rem;
+    border-radius: 50%;
+    width: 20px; height: 20px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: 700;
+    box-shadow: 0 1px 3px rgba(0,0,0,.4);
+  }
+  .refThumb .num {
+    position: absolute;
+    bottom: 4px; left: 4px;
+    color: #fff;
+    font-size: .65rem;
+    font-weight: 700;
+    padding: 1px 6px;
+    background: rgba(0,0,0,.6);
+    border-radius: 100px;
+    -webkit-backdrop-filter: blur(4px);
+    backdrop-filter: blur(4px);
+  }
+
+  #fileInput {
+    display: none;
+  }
+
+  .hint {
+    font-size: .78rem;
+    color: #8e8e93;
+    text-align: center;
+    line-height: 1.45;
+    padding: 0 4px;
+    margin-top: 4px;
+  }
+
+  /* Landscape-Anpassung */
+  @media (orientation: landscape) {
+    #scoreChips { top: calc(var(--safe-top) + 50px); }
+    #snapBtn { width: 66px; height: 66px; }
+  }
+
+  /* Ladeanzeige */
+  #loader {
+    position: fixed;
+    inset: 0;
+    background: #000;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    gap: 16px;
+    z-index: 200;
+    transition: opacity .4s;
+  }
+  #loader.hide { opacity: 0; pointer-events: none; }
+  .spinner {
+    width: 36px; height: 36px;
+    border: 3px solid rgba(255,255,255,.15);
+    border-top-color: #fff;
+    border-radius: 50%;
+    animation: spin 1s linear infinite;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  #loaderText { font-size: .85rem; color: #8e8e93; }
+</style>
+</head>
+<body>
+
+<!-- Lade-Overlay -->
+<div id="loader">
+  <div class="spinner"></div>
+  <div id="loaderText">Wird geladen …</div>
+</div>
+
+<!-- Kamera-Vollbild -->
+<div id="stage">
+  <video id="video" autoplay playsinline muted webkit-playsinline></video>
+  <img id="overlayImg" alt="" />
+  <canvas id="poseCanvas"></canvas>
+</div>
+
+<!-- Top-Bar -->
+<div id="topBar">
+  <div class="pill" id="poseCounter">– / –</div>
+  <div class="pill" id="overallScore">–</div>
+</div>
+
+<!-- Score-Chips -->
+<div id="scoreChips">
+  <span class="chip" data-k="head">Kopf –</span>
+  <span class="chip" data-k="body">Körper –</span>
+  <span class="chip" data-k="lHand">L-Hand –</span>
+  <span class="chip" data-k="rHand">R-Hand –</span>
+  <span class="chip" data-k="lFoot">L-Fuß –</span>
+  <span class="chip" data-k="rFoot">R-Fuß –</span>
+</div>
+
+<!-- Bottom-Bar -->
+<div id="bottomBar">
+  <button class="iconBtn" id="settingsBtn" aria-label="Einstellungen">⚙︎</button>
+  <button id="snapBtn" aria-label="Foto aufnehmen"></button>
+  <button class="iconBtn" id="nextBtn" aria-label="Nächste Vorlage">⏭︎</button>
+</div>
+
+<!-- Flash & Check -->
+<div id="flash"></div>
+<div id="checkBadge">✓</div>
+
+<!-- Toast -->
+<div id="toast"></div>
+
+<!-- Modal / iOS-Sheet -->
+<div id="modal">
+  <div id="sheet" role="dialog" aria-modal="true">
+    <div class="sheetHandle"></div>
+    <div class="sheetTitle">
+      Einstellungen
+      <button id="closeModal">Fertig</button>
+    </div>
+
+    <!-- Vorlagen -->
+    <div class="section">
+      <h3>Vorlagen-Fotos</h3>
+      <button class="btn" id="pickFilesBtn">Fotos auswählen</button>
+      <input type="file" id="fileInput" accept="image/*" multiple>
+      <div id="refGallery"></div>
+    </div>
+
+    <!-- Anpassung -->
+    <div class="section">
+      <h3>Anpassung</h3>
+      <div class="row">
+        <label>Deckkraft</label>
+        <span class="value" id="opacityVal">35%</span>
+      </div>
+      <input type="range" id="opacity" min="0" max="100" value="35">
+      <div class="row" style="margin-top:8px">
+        <label>Auto-Wechsel ab</label>
+        <span class="value" id="thresholdVal">75%</span>
+      </div>
+      <input type="range" id="threshold" min="50" max="95" value="75">
+    </div>
+
+    <!-- Optionen -->
+    <div class="section">
+      <h3>Optionen</h3>
+      <div class="row">
+        <label>Vorlage automatisch wechseln</label>
+        <label class="switch">
+          <input type="checkbox" id="autoSwitch" checked>
+          <span></span>
+        </label>
+      </div>
+      <div class="row">
+        <label>Vorlage einblenden</label>
+        <label class="switch">
+          <input type="checkbox" id="showRefToggle" checked>
+          <span></span>
+        </label>
+      </div>
+    </div>
+
+    <!-- Aktionen -->
+    <div class="section">
+      <h3>Aktionen</h3>
+      <div class="btnGrid">
+        <button class="btn secondary" id="switchCam">Kamera wechseln</button>
+        <button class="btn secondary" id="resetProgress">Fortschritt ↺</button>
+        <button class="btn danger" id="clearAll" style="grid-column: span 2;">Alle löschen</button>
+      </div>
+    </div>
+
+    <p class="hint">
+      Erreicht deine Pose die Schwelle, wird automatisch zur nächsten
+      Vorlage gewechselt und die aktuelle mit ✓ markiert.
+    </p>
+  </div>
+</div>
+
+<canvas id="captureCanvas" style="display:none"></canvas>
+
+<script type="module">
+// ============================================================
+// iOS/Safari/Edge-kompatibler Posen-Guide
+// ============================================================
+
+// ---------- Kurz-Helfer ----------
+const $ = id => document.getElementById(id);
+const toast = (msg, ms = 2200) => {
+  const t = $('toast');
+  t.textContent = msg;
+  t.classList.add('show');
+  clearTimeout(t._t);
+  t._t = setTimeout(() => t.classList.remove('show'), ms);
+};
+
+// ---------- State ----------
+let stream = null;
+let facingMode = 'environment';
+let autoSwitch = true;
+let showRef = true;
+let liveKeypoints = null;
+let templates = [];   // { src, keypoints, done }
+let currentIdx = -1;
+let lastAutoSwitch = 0;
+let pose = null;
+let mpReady = false;
+let processing = false;
+
+// Referenz-Extraktion: Warteschlange, damit MediaPipe nicht parallel läuft
+let extractQueue = Promise.resolve();
+
+// ---------- MediaPipe dynamisch laden ----------
+async function loadMediaPipe() {
+  $('loaderText').textContent = 'Pose-Modell wird geladen …';
+
+  // Skripte sequenziell laden (Safari braucht das)
+  const loadScript = (src) => new Promise((res, rej) => {
+    const s = document.createElement('script');
+    s.src = src;
+    s.crossOrigin = 'anonymous';
+    s.onload = res;
+    s.onerror = () => rej(new Error('Fehler beim Laden: ' + src));
+    document.head.appendChild(s);
+  });
+
+  try {
+    await loadScript('https://cdn.jsdelivr.net/npm/@mediapipe/pose@0.5.1675469404/pose.js');
+    
+  } catch (e) {
+    $('loaderText').textContent = '❌ Konnte Modell nicht laden. Internetverbindung prüfen.';
+    throw e;
+  }
+
+  // Warten bis globales Pose-Objekt verfügbar
+  if (typeof window.Pose !== 'function') {
+    throw new Error('Pose-Objekt nicht verfügbar');
+  }
+
+  pose = new window.Pose({
+    locateFile: (file) =>
+      `https://cdn.jsdelivr.net/npm/@mediapipe/pose@0.5.1675469404/${file}`
+  });
+  pose.setOptions({
+    modelComplexity: 1,
+    smoothLandmarks: true,
+    enableSegmentation: false,
+    minDetectionConfidence: 0.5,
+    minTrackingConfidence: 0.5
+  });
+  pose.onResults(onPoseResults);
+
+  // Modul initialisieren (wichtig für Safari!)
+  await pose.initialize?.();
+  mpReady = true;
+}
+
+// ---------- Kamera starten ----------
+async function startCamera() {
+  if (stream) stream.getTracks().forEach(t => t.stop());
+  try {
+    const constraints = {
+      video: {
+        facingMode: { ideal: facingMode },
+        width:  { ideal: 1280 },
+        height: { ideal: 1280 }
+      },
+      audio: false
+    };
+    stream = await navigator.mediaDevices.getUserMedia(constraints);
+    video.srcObject = stream;
+    await video.play();
+
+    // iOS Safari braucht einen Kick
+    if (video.readyState < 2) {
+      await new Promise(r => video.addEventListener('loadeddata', r, { once: true }));
+    }
+    toast('Kamera bereit');
+  } catch (err) {
+    console.error(err);
+    toast('Kamera-Fehler: ' + (err.message || 'unbekannt'), 4000);
+  }
+}
+
+const video = $('video');
+
+// ---------- Frame-Loop ----------
+async function frameLoop() {
+  if (mpReady && video.videoWidth && !processing) {
+    processing = true;
+    try {
+      await pose.send({ image: video });
+    } catch (e) {
+      // ignorieren
+    }
+    processing = false;
+  }
+  requestAnimationFrame(frameLoop);
+}
+
+// ---------- Landmark-Indizes ----------
+const IDX = {
+  nose: 0,
+  leftShoulder: 11, rightShoulder: 12,
+  leftElbow: 13,    rightElbow: 14,
+  leftWrist: 15,    rightWrist: 16,
+  leftHip: 23,      rightHip: 24,
+  leftKnee: 25,     rightKnee: 26,
+  leftAnkle: 27,    rightAnkle: 28
+};
+
+// ---------- Normalisierung ----------
+function normalizeKeypoints(lm) {
+  const lS = lm[IDX.leftShoulder], rS = lm[IDX.rightShoulder];
+  const lH = lm[IDX.leftHip],      rH = lm[IDX.rightHip];
+  if (!lS || !rS || !lH || !rH) return null;
+  const sMid = { x: (lS.x+rS.x)/2, y: (lS.y+rS.y)/2 };
+  const hMid = { x: (lH.x+rH.x)/2, y: (lH.y+rH.y)/2 };
+  const body = Math.hypot(sMid.x-hMid.x, sMid.y-hMid.y) || 0.001;
+  const norm = {};
+  for (const [name, i] of Object.entries(IDX)) {
+    const p = lm[i];
+    norm[name] = p ? { x: (p.x - sMid.x)/body, y: (p.y - sMid.y)/body } : null;
+  }
+  return norm;
+}
+
+function groupScore(a, b, group) {
+  if (!a || !b) return null;
+  let t = 0, c = 0;
+  for (const k of group) {
+    if (!a[k] || !b[k]) continue;
+    const d = Math.hypot(a[k].x - b[k].x, a[k].y - b[k].y);
+    t += Math.max(0, 100 * (1 - d));
+    c++;
+  }
+  return c ? t/c : null;
+}
+
+// ---------- Ergebnis-Callback ----------
+function onPoseResults(results) {
+  const w = video.videoWidth || 480;
+  const h = video.videoHeight || 640;
+  if (poseCanvas.width !== w || poseCanvas.height !== h) {
+    poseCanvas.width = w; poseCanvas.height = h;
+  }
+  const ctx = poseCanvas.getContext('2d');
+  ctx.clearRect(0, 0, w, h);
+
+  if (results.poseLandmarks) {
+    if (window.drawConnectors && window.POSE_CONNECTIONS) {
+      window.drawConnectors(ctx, results.poseLandmarks, window.POSE_CONNECTIONS,
+        { color: '#0ff', lineWidth: 3 });
+      window.drawLandmarks(ctx, results.poseLandmarks,
+        { color: '#f0f', lineWidth: 1, radius: 4 });
+    }
+    liveKeypoints = normalizeKeypoints(results.poseLandmarks);
+
+    const ref = templates[currentIdx]?.keypoints;
+    if (ref) {
+      drawNormalizedPose(ctx, ref, '#0f0', w, h, results.poseLandmarks);
+      updateScores();
+    } else {
+      clearScores();
+    }
+  } else {
+    liveKeypoints = null;
+    clearScores();
+  }
+}
+
+const poseCanvas = $('poseCanvas');
+
+// ---------- Referenz-Skelett zeichnen ----------
+function drawNormalizedPose(ctx, norm, color, w, h, liveLm) {
+  const lS = liveLm[IDX.leftShoulder], rS = liveLm[IDX.rightShoulder];
+  const lH = liveLm[IDX.leftHip],      rH = liveLm[IDX.rightHip];
+  if (!lS || !rS || !lH || !rH) return;
+  const sMid = { x: (lS.x+rS.x)/2, y: (lS.y+rS.y)/2 };
+  const hMid = { x: (lH.x+rH.x)/2, y: (lH.y+rH.y)/2 };
+  const body = Math.hypot(sMid.x-hMid.x, sMid.y-hMid.y) || 0.001;
+  const toScreen = p => ({
+    x: (p.x*body + sMid.x) * w,
+    y: (p.y*body + sMid.y) * h
+  });
+  const conns = [
+    ['nose','leftShoulder'], ['nose','rightShoulder'],
+    ['leftShoulder','rightShoulder'],
+    ['leftShoulder','leftElbow'], ['leftElbow','leftWrist'],
+    ['rightShoulder','rightElbow'], ['rightElbow','rightWrist'],
+    ['leftShoulder','leftHip'], ['rightShoulder','rightHip'],
+    ['leftHip','rightHip'],
+    ['leftHip','leftKnee'], ['leftKnee','leftAnkle'],
+    ['rightHip','rightKnee'], ['rightKnee','rightAnkle']
+  ];
+  ctx.strokeStyle = color;
+  ctx.lineWidth = 2.5;
+  ctx.setLineDash([7, 5]);
+  for (const [a, b] of conns) {
+    if (!norm[a] || !norm[b]) continue;
+    const pa = toScreen(norm[a]), pb = toScreen(norm[b]);
+    ctx.beginPath();
+    ctx.moveTo(pa.x, pa.y);
+    ctx.lineTo(pb.x, pb.y);
+    ctx.stroke();
+  }
+  ctx.setLineDash([]);
+  for (const k in norm) {
+    if (!norm[k]) continue;
+    const p = toScreen(norm[k]);
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, 3.5, 0, Math.PI*2);
+    ctx.fillStyle = color;
+    ctx.fill();
+  }
+}
+
+// ---------- Chips ----------
+const chipEls = {
+  head:  document.querySelector('.chip[data-k="head"]'),
+  body:  document.querySelector('.chip[data-k="body"]'),
+  lHand: document.querySelector('.chip[data-k="lHand"]'),
+  rHand: document.querySelector('.chip[data-k="rHand"]'),
+  lFoot: document.querySelector('.chip[data-k="lFoot"]'),
+  rFoot: document.querySelector('.chip[data-k="rFoot"]')
+};
+const chipLabels = { head: 'Kopf', body: 'Körper', lHand: 'L-Hand', rHand: 'R-Hand', lFoot: 'L-Fuß', rFoot: 'R-Fuß' };
+
+function setChip(key, val) {
+  const el = chipEls[key];
+  if (val == null) {
+    el.textContent = chipLabels[key] + ' –';
+    el.className = 'chip';
+    return;
+  }
+  el.textContent = chipLabels[key] + ' ' + Math.round(val) + '%';
+  el.className = 'chip ' + (val >= 75 ? 'good' : val >= 50 ? 'mid' : 'bad');
+}
+
+function updateScores() {
+  const ref = templates[currentIdx]?.keypoints;
+  const g = {
+    head:  groupScore(liveKeypoints, ref, ['nose']),
+    body:  groupScore(liveKeypoints, ref, ['leftShoulder','rightShoulder','leftHip','rightHip']),
+    lHand: groupScore(liveKeypoints, ref, ['leftElbow','leftWrist']),
+    rHand: groupScore(liveKeypoints, ref, ['rightElbow','rightWrist']),
+    lFoot: groupScore(liveKeypoints, ref, ['leftKnee','leftAnkle']),
+    rFoot: groupScore(liveKeypoints, ref, ['rightKnee','rightAnkle'])
+  };
+  for (const k in g) setChip(k, g[k]);
+
+  const valid = Object.values(g).filter(v => v != null);
+  const total = valid.length ? valid.reduce((a,b)=>a+b,0)/valid.length : null;
+  const os = $('overallScore');
+  if (total == null) { os.textContent = '–'; os.className = 'pill'; return; }
+  os.textContent = Math.round(total) + '%';
+  os.className = 'pill ' + (total >= 75 ? 'good' : total >= 50 ? 'mid' : 'bad');
+
+  // Auto-Wechsel
+  const thr = +$('threshold').value;
+  const now = Date.now();
+  if (autoSwitch && total >= thr && ref && now - lastAutoSwitch > 2500) {
+    lastAutoSwitch = now;
+    markCurrentDone();
+    showSuccess(() => goToNextTemplate());
+  }
+}
+
+function clearScores() {
+  for (const k in chipEls) setChip(k, null);
+  const os = $('overallScore');
+  os.textContent = '–';
+  os.className = 'pill';
+}
+
+// ---------- Erfolgsanimation ----------
+function showSuccess(cb) {
+  $('flash').classList.add('show');
+  $('checkBadge').classList.add('show');
+  // leichter Haptik-Effekt (iOS)
+  if (navigator.vibrate) navigator.vibrate(60);
+  setTimeout(() => {
+    $('flash').classList.remove('show');
+    $('checkBadge').classList.remove('show');
+    cb && cb();
+  }, 900);
+}
+
+// ---------- Vorlagen-Verwaltung ----------
+function markCurrentDone() {
+  if (currentIdx >= 0 && templates[currentIdx]) {
+    templates[currentIdx].done = true;
+    renderGallery();
+    updateCounter();
+  }
+}
+
+function goToNextTemplate() {
+  if (templates.length === 0) return;
+  for (let i = 1; i <= templates.length; i++) {
+    const idx = (currentIdx + i) % templates.length;
+    if (!templates[idx].done) return setCurrentTemplate(idx);
+  }
+  // Alle fertig → zurücksetzen
+  templates.forEach(t => t.done = false);
+  setCurrentTemplate((currentIdx + 1) % templates.length);
+  toast('🏆 Alle Vorlagen geschafft – von vorne!');
+}
+
+function setCurrentTemplate(idx) {
+  if (idx < 0 || idx >= templates.length) return;
+  currentIdx = idx;
+  const t = templates[idx];
+  const img = $('overlayImg');
+  img.src = t.src;
+  img.style.display = showRef ? 'block' : 'none';
+  img.style.opacity = $('opacity').value / 100;
+  updateCounter();
+  renderGallery();
+}
+
+function updateCounter() {
+  if (templates.length === 0) { $('poseCounter').textContent = '– / –'; return; }
+  const done = templates.filter(t => t.done).length;
+  $('poseCounter').textContent = `${currentIdx + 1} / ${templates.length}  ·  ✓ ${done}`;
+}
+
+function renderGallery() {
+  const g = $('refGallery');
+  g.innerHTML = '';
+  templates.forEach((t, i) => {
+    const div = document.createElement('div');
+    div.className = 'refThumb' + (i === currentIdx ? ' active' : '') + (t.done ? ' done' : '');
+    div.innerHTML = `
+      <img src="${t.src}" alt="">
+      <span class="num">${i + 1}</span>
+      ${t.done ? '<span class="badge">✓</span>' : ''}
+    `;
+    div.addEventListener('click', () => setCurrentTemplate(i));
+    g.appendChild(div);
+  });
+}
+
+// ---------- Referenz aus Bild extrahieren ----------
+function extractPoseFromImage(imgEl) {
+  return new Promise(resolve => {
+    const handler = (results) => {
+      pose.onResults(onPoseResults);
+      resolve(results.poseLandmarks ? normalizeKeypoints(results.poseLandmarks) : null);
+    };
+    pose.onResults(handler);
+    pose.send({ image: imgEl }).catch(() => {
+      pose.onResults(onPoseResults);
+      resolve(null);
+    });
+  });
+}
+
+// ---------- Datei-Auswahl ----------
+$('pickFilesBtn').addEventListener('click', () => $('fileInput').click());
+
+$('fileInput').addEventListener('change', async (e) => {
+  const files = Array.from(e.target.files);
+  if (!files.length) return;
+  if (!mpReady) { toast('Modell lädt noch, bitte warten …'); return; }
+
+  toast(`Analysiere ${files.length} Foto(s) …`, 3000);
+
+  for (const file of files) {
+    const src = await new Promise(res => {
+      const r = new FileReader();
+      r.onload = ev => res(ev.target.result);
+      r.readAsDataURL(file);
+    });
+
+    const img = new Image();
+    // crossOrigin nicht nötig bei Data-URLs
+    await new Promise((res, rej) => {
+      img.onload = res;
+      img.onerror = rej;
+      img.src = src;
+    });
+
+    // Sequenziell – vermeidet Race Conditions in Safari
+    const keypoints = await new Promise((resolve) => {
+      extractQueue = extractQueue.then(() => extractPoseFromImage(img).then(resolve));
+    });
+
+    templates.push({ src, keypoints, done: false });
+  }
+
+  renderGallery();
+  updateCounter();
+  if (currentIdx === -1 && templates.length > 0) setCurrentTemplate(0);
+
+  const failed = templates.filter(t => !t.keypoints).length;
+  toast(
+    templates.length + ' Vorlage(n) geladen' +
+    (failed ? ` · ${failed} ohne erkannte Pose` : ''),
+    2800
+  );
+
+  e.target.value = '';
+});
+
+// ---------- Modal ----------
+$('settingsBtn').addEventListener('click', () => $('modal').classList.add('show'));
+$('closeModal').addEventListener('click', () => $('modal').classList.remove('show'));
+$('modal').addEventListener('click', (e) => {
+  if (e.target === $('modal')) $('modal').classList.remove('show');
+});
+
+// ---------- Slider ----------
+$('opacity').addEventListener('input', e => {
+  $('overlayImg').style.opacity = e.target.value / 100;
+  $('opacityVal').textContent = e.target.value + '%';
+});
+$('threshold').addEventListener('input', e => {
+  $('thresholdVal').textContent = e.target.value + '%';
+});
+
+// ---------- Toggles ----------
+$('autoSwitch').addEventListener('change', e => autoSwitch = e.target.checked);
+$('showRefToggle').addEventListener('change', e => {
+  showRef = e.target.checked;
+  $('overlayImg').style.display = showRef && $('overlayImg').src ? 'block' : 'none';
+});
+
+// ---------- Buttons ----------
+$('switchCam').addEventListener('click', () => {
+  facingMode = facingMode === 'environment' ? 'user' : 'environment';
+  startCamera();
+});
+
+$('resetProgress').addEventListener('click', () => {
+  templates.forEach(t => t.done = false);
+  lastAutoSwitch = 0;
+  renderGallery();
+  updateCounter();
+  toast('Fortschritt zurückgesetzt');
+});
+
+$('clearAll').addEventListener('click', () => {
+  templates = [];
+  currentIdx = -1;
+  $('overlayImg').src = '';
+  $('overlayImg').style.display = 'none';
+  renderGallery();
+  updateCounter();
+  clearScores();
+  toast('Alle Vorlagen gelöscht');
+});
+
+$('nextBtn').addEventListener('click', () => {
+  if (!templates.length) { toast('Keine Vorlagen geladen'); return; }
+  markCurrentDone();
+  goToNextTemplate();
+});
+
+// ============================================================
+// FOTO AUFNEHMEN – mit iPhone-Galerie-Speicherung
+// ============================================================
+
+// Canvas → Blob
+function canvasToBlob(canvas, type = 'image/jpeg', quality = 0.95) {
+  return new Promise(resolve => {
+    if (canvas.toBlob) {
+      canvas.toBlob(b => resolve(b), type, quality);
+    } else {
+      // Fallback (ältere Safari)
+      const dataURL = canvas.toDataURL(type, quality);
+      const bin = atob(dataURL.split(',')[1]);
+      const arr = new Uint8Array(bin.length);
+      for (let i = 0; i < bin.length; i++) arr[i] = bin.charCodeAt(i);
+      resolve(new Blob([arr], { type }));
+    }
+  });
+}
+
+async function saveImage(blob, filename) {
+  const file = new File([blob], filename, { type: blob.type || 'image/jpeg' });
+
+  // 1) iOS / Android: Web Share API mit Datei → "Bild sichern" → Fotos-App
+  const canShareFiles = navigator.canShare && navigator.canShare({ files: [file] });
+  if (canShareFiles) {
+    try {
+      await navigator.share({
+        files: [file],
+        title: 'Posen-Foto',
+      });
+      toast('Foto geteilt / gespeichert ✓');
+      return;
+    } catch (err) {
+      if (err.name === 'AbortError') return; // Nutzer hat abgebrochen
+      console.warn('Share fehlgeschlagen, Fallback:', err);
+    }
+  }
+
+  // 2) Desktop: File System Access API → Ordner wählen
+  if (window.showSaveFilePicker) {
+    try {
+      const handle = await window.showSaveFilePicker({
+        suggestedName: filename,
+        types: [{ description: 'Bild', accept: { 'image/jpeg': ['.jpg'] } }]
+      });
+      const writable = await handle.createWritable();
+      await writable.write(blob);
+      await writable.close();
+      toast('Gespeichert ✓');
+      return;
+    } catch (err) {
+      if (err.name === 'AbortError') return;
+      console.warn('Save File Picker fehlgeschlagen, Fallback:', err);
+    }
+  }
+
+  // 3) Klassischer Download-Fallback
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  a.rel = 'noopener';
+  document.body.appendChild(a);
+  a.click();
+  setTimeout(() => {
+    URL.revokeObjectURL(url);
+    a.remove();
+  }, 100);
+  toast('Download gestartet – prüfe "Downloads"');
+}
+
+$('snapBtn').addEventListener('click', async () => {
+  if (!video.videoWidth) { toast('Kamera noch nicht bereit'); return; }
+  const w = video.videoWidth, h = video.videoHeight;
+  const c = $('captureCanvas');
+  c.width = w; c.height = h;
+  const ctx = c.getContext('2d');
+
+  // Nur Kamerabild – ohne Overlay und ohne Skelett
+  if (facingMode === 'user') {
+    ctx.save();
+    ctx.scale(-1, 1);
+    ctx.drawImage(video, -w, 0, w, h);
+    ctx.restore();
+  } else {
+    ctx.drawImage(video, 0, 0, w, h);
+  }
+
+  try {
+    const blob = await canvasToBlob(c, 'image/jpeg', 0.95);
+    const filename = `pose-${Date.now()}.jpg`;
+    await saveImage(blob, filename);
+  } catch (err) {
+    console.error(err);
+    toast('Speichern fehlgeschlagen');
+  }
+});
+
+// ============================================================
+// INIT
+// ============================================================
+(async () => {
+  try {
+    await startCamera();
+    await loadMediaPipe();
+    $('loader').classList.add('hide');
+    setTimeout(() => $('loader').remove(), 500);
+    frameLoop();
+    toast('Bereit – lade Vorlagen über ⚙︎');
+  } catch (err) {
+    console.error(err);
+    $('loaderText').textContent = '❌ Fehler: ' + (err.message || err);
+  }
+})();
+
+// Verhindert Doppeltipp-Zoom auf iOS
+document.addEventListener('gesturestart', e => e.preventDefault());
+// Verhindert Kontextmenü bei Long-Press
+document.addEventListener('contextmenu', e => e.preventDefault());
+</script>
+</body>
+</html>
